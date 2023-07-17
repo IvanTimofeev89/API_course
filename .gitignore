@@ -1,0 +1,7 @@
+disk_token.txt
+vk_token.txt
+Lib
+Scripts
+venv
+pyvenv.cfg
+.idea
