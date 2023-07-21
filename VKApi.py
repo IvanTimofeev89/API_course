@@ -1,15 +1,15 @@
 import requests
 import datetime
-import time
 import json
 from progress.bar import IncrementalBar
 from urllib.parse import urlencode
+import time
 
 
 class VKClient:
     vk_url = 'https://api.vk.com/method/photos.get'
     y_disk_url = 'https://cloud-api.yandex.net/v1/disk/resources'
-    folder_name = 'vk_backup'
+    folder_name = f"vk {time.strftime('%H-%M %d%b%Y')}"
     photo_amount = 5
 
     def __init__(self, vk_token, user_id, disk_token, album_id):
@@ -21,7 +21,8 @@ class VKClient:
             'v': '5.131',
             'owner_id': self.user_id,
             'album_id': self.album_id,
-            'extended': 1
+            'extended': 1,
+            'count': self.photo_amount
         }
         self.disk_token = disk_token
         self.y_headers = {'Authorization': f'OAuth {self.disk_token}'}
@@ -34,7 +35,6 @@ class VKClient:
     def _create_disk_folder(self):
         res = requests.put(self.y_disk_url, params={'path': self.folder_name}, headers=self.y_headers)
         res.raise_for_status()
-        return res.status_code
 
     def _post_and_json(self, _list, _path, _date, _url, _json, _size):
         """Функция:
@@ -47,7 +47,7 @@ class VKClient:
         params = {'url': _url}
         if _list.count(likes_number) > 1:
             date = datetime.datetime.fromtimestamp(_date).strftime('%d%m%Y')
-            file_name = f'{likes_number}' + f' {date}'
+            file_name = f'{likes_number} {date}'
             params.update({'path': f'/{self.folder_name}/' + file_name})
             res = requests.post(self.y_disk_url + '/upload', params=params, headers=self.y_headers)
             res.raise_for_status()
@@ -69,26 +69,24 @@ class VKClient:
         2) отправка фото на Яндекс.Диск
         3) отображение прогресс-бара в терминале
         4) создание выходного json файла"""
-        if self._create_disk_folder() == 201:
-            photos_list = self._get_vk_photos()[:self.photo_amount]
-            likes_list = [i.get('likes').get('count') for i in photos_list]
-            json_data = []
-            bar = IncrementalBar('Countdown', max=len(photos_list))
-            for item in photos_list:
-                for picture in item['sizes']:
-                    if picture['type'] == 'z':
-                        self._post_and_json(
-                            _list=likes_list,
-                            _path=item.get('likes').get('count'),
-                            _date=item.get('date'),
-                            _url=picture['url'],
-                            _json=json_data,
-                            _size=picture['type']
-                        )
-                        bar.next()
-                        time.sleep(0.5)
-            bar.finish()
-            self._make_json(data=json_data, name='vk_backup.json')
+        self._create_disk_folder()
+        photos_list = self._get_vk_photos()
+        likes_list = [_.get('likes').get('count') for _ in photos_list]
+        json_data = []
+        bar = IncrementalBar('Countdown', max=len(photos_list))
+        for photo in photos_list:
+            self._post_and_json(
+                _list=likes_list,
+                _path=photo.get('likes').get('count'),
+                _date=photo.get('date'),
+                _url=photo['sizes'][-1]['url'],
+                _json=json_data,
+                _size=photo['sizes'][-1]['type']
+            )
+            bar.next()
+            time.sleep(0.5)
+        bar.finish()
+        self._make_json(data=json_data, name='vk_backup.json')
 
 
 def get_access_token():
@@ -115,3 +113,4 @@ if __name__ == "__main__":
                      '(1 - профиль, 2 - сохранные, 3 - стена): ').strip()
     vk_client = VKClient(vk_token, vk_user_id, disk_token, album_types[album_id])
     vk_client.y_disk_upload()
+
